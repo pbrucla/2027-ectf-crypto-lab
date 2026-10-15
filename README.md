@@ -36,6 +36,7 @@ uv run pytest tests/test_part1.py
 uv run pytest tests/test_part2.py
 uv run pytest tests/test_part3.py
 uv run pytest tests/test_part4.py
+uv run pytest tests/test_part5.py
 ```
 
 Before you write any code, most tests will fail. That's expected: the UAV starts out accepting everything. Your goal is to get every test in a part passing.
@@ -107,11 +108,12 @@ Let's first create this keypair. From the `src` folder, run `uv run python gener
 ```
 keys/
 ├── firmware.key
+├── firmware_password.txt
 ├── ground_private.pem
 └── ground_public.pem
 ```
 
-(`firmware.key` is for Part 4; ignore it for now.)
+(`firmware.key` and `firmware_password.txt` are for Parts 4 and 5; ignore them for now.)
 
 The private key belongs to the ground server:
 ```
@@ -243,6 +245,7 @@ Unlike Ed25519, ChaCha20-Poly1305 is *symmetric*: the ground server and the UAV 
 ```
 keys/
 ├── firmware.key        # shared by the ground server and the UAV
+├── firmware_password.txt
 ├── ground_private.pem
 └── ground_public.pem
 ```
@@ -270,7 +273,7 @@ In Part 4 mode, the UAV checks your Part 2a signature first, then calls `decrypt
 
 Implement **ChaCha20-Poly1305** decryption in `decrypt_firmware()` in [`security.py`](src/uav/security.py):
 - Get the nonce and ciphertext from `message["firmware"]["nonce"]` and `message["firmware"]["code"]`, and convert both from hex with `bytes.fromhex()`.
-- Use `load_firmware_key()` to load the shared key from `keys/firmware.key`.
+- Use `load_firmware_key()` to load the shared key from `keys/firmware.key`. `decrypt_firmware()` also takes an optional `key` argument: only load the key when `key` is `None`. Part 5 uses this to pass in a key derived from a password.
 - Call `ChaCha20Poly1305(key).decrypt(nonce, ciphertext, associated_data)`, where the associated data is the version, exactly as the ground server encoded it: `str(version).encode()`. See the [`cryptography` AEAD docs](https://cryptography.io/en/latest/hazmat/primitives/aead/#cryptography.hazmat.primitives.ciphers.aead.ChaCha20Poly1305).
 - Like `verify()`, `decrypt()` raises on failure instead of returning `False`: it raises `InvalidTag`. Catch it and return `None`.
 - On success, return the code as a string with `.decode()`.
@@ -297,3 +300,80 @@ Things to think about:
 - What goes wrong if the ground server reuses a nonce for two different firmware images under the same key?
 - Every UAV in a fleet shares one `firmware.key`. What happens if an attacker pulls it out of a single captured UAV? How could you limit the damage?
 - The version and the length of the firmware are still visible. Could that leak anything useful to an attacker?
+
+## Part 5: Keys from Passwords with PBKDF2
+In Part 4, `firmware.key` was 32 random bytes. Real keys often start as something a person can type and remember instead: an operator password, a deployment PIN, a build secret. A password can't be used as a ChaCha20 key directly. It's the wrong length, and it has far less randomness than 32 random bytes.
+
+The obvious fix, `sha256(password)`, gives you 32 bytes, but it's a bad key. SHA256 is designed to be *fast*, so an attacker who captures an encrypted update can try billions of guessed passwords per second until one decrypts it. A **key derivation function** for passwords is designed to be *slow* instead. We'll use **PBKDF2-HMAC-SHA256**, which takes three inputs:
+- **Password:** the secret.
+- **Salt:** random bytes, new for every update. The salt does **not** need to be secret, so it is sent in plaintext next to the ciphertext. It makes sure the same password gives a different key every time, so an attacker can't precompute a table of `password → key` and reuse it across messages.
+- **Iterations:** how many times HMAC-SHA256 is applied internally. This is the work factor. The ground server uses 600,000 (OWASP's current recommendation), so every guess costs an attacker 600,000 times as much work as a plain hash.
+
+`generate_keys.py` already created a random password shared by the ground server and the UAV:
+```
+keys/
+├── firmware.key
+├── firmware_password.txt   # Part 5: shared by the ground server and the UAV
+├── ground_private.pem
+└── ground_public.pem
+```
+If you don't have `keys/firmware_password.txt`, run `uv run python generate_keys.py` again from the `src` folder and restart the UAV.
+
+The ground server builds a password-based update like this (see `update_firmware_password()` in [`ground.py`](src/ground/ground.py)):
+1. Pick a random 16-byte salt.
+2. Derive a 32-byte key from the password with PBKDF2-HMAC-SHA256, using that salt and 600,000 iterations.
+3. Encrypt the code with that key exactly as in Part 4.
+4. Put the salt (hex) and the iteration count in `"firmware"`, then sign the whole message.
+
+A password-based update looks like this:
+```python
+{
+    "type": "UPDATE",
+    "firmware": {
+        "version": 8,
+        "salt": "<16 bytes as hex>",
+        "iterations": 600000,
+        "nonce": "<12 bytes as hex>",
+        "code": "<ciphertext + tag as hex>",
+    },
+    "signature": "<hex>"
+}
+```
+
+In Part 5 mode, the UAV runs the same steps as Part 4: signature, then decryption, then the counter. The only difference is that it calls `decrypt_firmware_password()`, which derives the key first and then hands it to your Part 4 `decrypt_firmware()`.
+
+Implement **PBKDF2** key derivation in [`security.py`](src/uav/security.py) in two methods.
+
+`derive_firmware_key(password, salt, iterations)`:
+- Create a `PBKDF2HMAC` with `algorithm=hashes.SHA256()`, `length=32` (ChaCha20 needs a 256-bit key), and the given `salt` and `iterations`.
+- Return `.derive(password.encode())`. `derive()` takes bytes, not a string.
+- A `PBKDF2HMAC` object can only derive **once**: calling `derive()` twice raises `AlreadyFinalized`. Create a new one on every call. See the [`cryptography` PBKDF2 docs](https://cryptography.io/en/latest/hazmat/primitives/key-derivation-functions/#cryptography.hazmat.primitives.kdf.pbkdf2.PBKDF2HMAC).
+
+`decrypt_firmware_password(message)`:
+- Get the salt and iteration count from `message["firmware"]`, and convert the salt from hex with `bytes.fromhex()`.
+- Return `None` if the iteration count is below `self.min_iterations` (set in `__init__`). The signature already proves the ground server sent it, but the UAV should still refuse a weakened work factor, for example from a misconfigured or compromised build tool. Compare against `self.min_iterations` rather than writing `600000`, because the tests lower it to stay fast.
+- Load the password with `load_firmware_password()` and derive the key with `self.derive_firmware_key()`.
+- Return `self.decrypt_firmware(message, key)`. When you pass `key`, your Part 4 code should use it instead of loading `firmware.key`.
+- Your Part 2a, 3 and 4 code must already work.
+
+Restart the UAV in Part 5 mode:
+```
+uv run python -m uav.uav --part 5
+```
+
+Then send updates from the ground console:
+```python
+ground.update_firmware_password(8, "LEGITIMATE FLIGHT SOFTWARE")                   # accepted
+ground.update_firmware_password(9, "LEGITIMATE FLIGHT SOFTWARE", iterations=1000)  # too few iterations: rejected
+ground.update_firmware_password(9, "LEGITIMATE FLIGHT SOFTWARE", password="oops")  # wrong password: rejected
+```
+You should notice a short pause on each accepted update. That pause is the 600,000 iterations, and it's the point: the UAV pays it once per update, but an attacker guessing passwords pays it for every single guess.
+
+Check your work with `uv run pytest tests/test_part5.py` from the repo root.
+
+Things to think about:
+- The salt is sent in plaintext, and anyone on the link can read it in Wireshark. Why doesn't that help an attacker?
+- PBKDF2 makes every guess slow, but a guess is still a guess. If the password were `dragon`, how much would 600,000 iterations really help?
+- The UAV stores `firmware_password.txt` right next to its code. Is that any safer than storing `firmware.key`? Where does a password KDF actually help: on a device, or with a human typing a password?
+- PBKDF2 needs very little memory, so GPUs and custom hardware can run many guesses in parallel. How do memory-hard KDFs like scrypt and Argon2 change that?
+- How is a password KDF like PBKDF2 different from a KDF like HKDF, which expands an already-random key into several keys?

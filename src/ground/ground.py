@@ -2,9 +2,17 @@ import hashlib
 import os
 import socket
 
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-from common.protocol import encode_message, load_firmware_key, load_private_key
+from common.protocol import (
+    PBKDF2_ITERATIONS,
+    encode_message,
+    load_firmware_key,
+    load_firmware_password,
+    load_private_key,
+)
 
 UAV_ADDRESS = ("127.0.0.1", 9000)
 
@@ -95,6 +103,51 @@ def update_firmware_encrypted(version, code):
         "type": "UPDATE",
         "firmware": {
             "version": version,
+            "nonce": nonce.hex(),
+            "code": ciphertext.hex(),
+        },
+    }
+    message["signature"] = private_key.sign(encode_message(message)).hex()
+
+    send(message)
+    print(f"[GROUND] Sent: {message}")
+
+    return message
+
+
+def update_firmware_password(version, code, password=None, iterations=PBKDF2_ITERATIONS):
+    # Part 5: like update_firmware_encrypted(), but the key is derived from a
+    # password with PBKDF2-HMAC-SHA256. The salt is random per update and
+    # sent in the clear next to the iteration count; both are signed.
+    try:
+        if password is None:
+            password = load_firmware_password()
+        private_key = load_private_key()
+    except FileNotFoundError:
+        raise FileNotFoundError(
+            "Missing keys. Run `uv run python generate_keys.py` "
+            "from the src folder first."
+        ) from None
+
+    salt = os.urandom(16)
+    firmware_key = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=iterations,
+    ).derive(password.encode())
+
+    nonce = os.urandom(12)
+    ciphertext = ChaCha20Poly1305(firmware_key).encrypt(
+        nonce, code.encode(), str(version).encode()
+    )
+
+    message = {
+        "type": "UPDATE",
+        "firmware": {
+            "version": version,
+            "salt": salt.hex(),
+            "iterations": iterations,
             "nonce": nonce.hex(),
             "code": ciphertext.hex(),
         },

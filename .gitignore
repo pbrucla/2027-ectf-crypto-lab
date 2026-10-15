@@ -16,3 +16,4 @@ keys/
 *.pem
 
 solutions/
+.DS_Store

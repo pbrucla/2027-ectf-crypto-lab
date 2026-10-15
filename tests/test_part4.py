@@ -3,26 +3,15 @@
 Run with:  uv run pytest tests/test_part4.py
 """
 
-from conftest import encrypted_update_message, update_message, with_signature
+from conftest import (
+    deliver_encrypted,
+    encrypted_update_message,
+    update_message,
+    with_signature,
+)
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 
 CODE = "LEGITIMATE FLIGHT SOFTWARE"
-
-
-def deliver_encrypted(uav, message, code=CODE):
-    """Send a message to the UAV the same way run() does.
-
-    Returns True if the UAV installed the message's version with the
-    decrypted code. (conftest's deliver() compares against the message's
-    firmware, which is ciphertext here.)
-    """
-    try:
-        uav.handle_message(message)
-    except Exception as e:
-        print(f"[test] UAV raised {type(e).__name__}: {e}")
-
-    expected = {"version": message["firmware"]["version"], "code": code}
-    return uav.current_firmware == expected
 
 
 # ---------- Part 4: the UAV decrypts the firmware ----------

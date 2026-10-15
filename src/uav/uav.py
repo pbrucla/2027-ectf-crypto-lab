@@ -18,13 +18,15 @@ PORT = 9000
 #
 # Part 4 encrypts the code, so "firmware" becomes:
 #     {"version": 1, "nonce": "<hex>", "code": "<ciphertext hex>"}
+# Part 5 derives the key from a password, adding "salt" and "iterations":
+#     {"version": 1, "salt": "<hex>", "iterations": 600000, "nonce": "<hex>", "code": "<ciphertext hex>"}
 
 class UAV:
     def __init__(self, part=1):
         # Which lab part is active: 1 = hash, 2 = signature, 3 = signature + anti-replay,
-        # 4 = signature + anti-replay + encryption
-        if part not in (1, 2, 3, 4):
-            raise ValueError(f"part must be 1, 2, 3, or 4, got {part}")
+        # 4 = signature + anti-replay + encryption, 5 = Part 4 with a password-derived key
+        if part not in (1, 2, 3, 4, 5):
+            raise ValueError(f"part must be 1, 2, 3, 4, or 5, got {part}")
 
         self.part = part
         self.security = Security()
@@ -64,9 +66,14 @@ class UAV:
         else:
             # Decrypt before the counter, so an update that fails to decrypt
             # doesn't advance highest_version.
+            if self.part == 4:
+                decrypt = self.security.decrypt_firmware
+            else:
+                decrypt = self.security.decrypt_firmware_password
+
             code = None
             if self.security.verify_firmware_signature(message):
-                code = self.security.decrypt_firmware(message)
+                code = decrypt(message)
 
             verified = code is not None and self.security.verify_firmware_counter(
                 message
@@ -97,7 +104,7 @@ class UAV:
 
                 self.handle_message(message)
 
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 -- a bad packet must never stop the UAV
                 print(f"[UAV] Invalid packet: {e}")
 
 
@@ -108,9 +115,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--part",
         type=int,
-        choices=[1, 2, 3, 4],
+        choices=[1, 2, 3, 4, 5],
         default=1,
-        help="lab part to run (1 = hash, 2 = signature, 3 = anti-replay, 4 = encryption)",
+        help="lab part to run (1 = hash, 2 = signature, 3 = anti-replay, 4 = encryption, 5 = KDF)",
     )
     args = parser.parse_args()
 

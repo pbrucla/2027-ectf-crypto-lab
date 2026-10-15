@@ -32,3 +32,10 @@ def load_private_key():
 def load_firmware_key() -> bytes:
     # Part 4: shared ChaCha20-Poly1305 key, stored as hex text.
     return bytes.fromhex((keys_dir() / "firmware.key").read_text().strip())
+
+# Part 5: PBKDF2 work factor the ground server uses (OWASP's PBKDF2-HMAC-SHA256 recommendation)
+PBKDF2_ITERATIONS = 600_000
+
+def load_firmware_password() -> str:
+    # Part 5: shared password the firmware key is derived from.
+    return (keys_dir() / "firmware_password.txt").read_text().strip()

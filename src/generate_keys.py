@@ -1,3 +1,4 @@
+import secrets
 from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
@@ -32,5 +33,8 @@ KEYS_DIR.mkdir(parents=True, exist_ok=True)
 # Part 4: symmetric key shared by the ground server and the UAV
 (KEYS_DIR / "firmware.key").write_text(ChaCha20Poly1305.generate_key().hex())
 
+# Part 5: password shared by the ground server and the UAV
+(KEYS_DIR / "firmware_password.txt").write_text(secrets.token_urlsafe(16))
 
-print("Generated ground key pair and firmware key.")
+
+print("Generated ground key pair, firmware key, and firmware password.")
