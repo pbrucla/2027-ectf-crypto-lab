@@ -36,9 +36,12 @@ class Security:
         # 1. Extract signature from message using get()
         # 2. Extract unsigned bytes from message using unsigned_bytes()
         # 3. Use hashlib.sha256() and hexdigest() to hash the unsigned bytes
-        # 4. Use hmac.compare_digest() to compare 
+        # 4. Use hmac.compare_digest() to compare
+        
+        signature = message.get("signature")
+        unsignedBytes = unsigned_bytes(message)
 
-        return True
+        return hmac.compare_digest(signature, hashlib.sha256(unsignedBytes).hexdigest())
 
     # Part 2
     def verify_firmware_signature(self, message):
