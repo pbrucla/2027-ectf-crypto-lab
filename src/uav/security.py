@@ -36,9 +36,12 @@ class Security:
         # 1. Extract signature from message using get()
         # 2. Extract unsigned bytes from message using unsigned_bytes()
         # 3. Use hashlib.sha256() and hexdigest() to hash the unsigned bytes
-        # 4. Use hmac.compare_digest() to compare 
+        # 4. Use hmac.compare_digest() to compare
 
-        return True
+        received = message.get("signature", "")
+        my_hashed = hashlib.sha256(unsigned_bytes(message)).hexdigest()
+
+        return hmac.compare_digest(my_hashed, received)
 
     # Part 2
     def verify_firmware_signature(self, message):
@@ -49,7 +52,15 @@ class Security:
         # 4. Use public_key.verify() to verify the signature against the unsigned bytes
         # 5. Catch InvalidSignature and return False
 
-        return True
+        pub_key = load_public_key()
+
+        signature = bytes.fromhex(message.get("signature",""))
+        
+        try:
+            pub_key.verify(signature, unsigned_bytes(message))
+            return True
+        except InvalidSignature:
+            return False
     
     # Part 3
     def verify_firmware_counter(self, message):
@@ -58,7 +69,6 @@ class Security:
         # 1. Extract the version from message["firmware"]
         # 2. Reject it unless it is strictly newer than self.highest_version
         # 3. Otherwise, update self.highest_version and return True
-
         return True
 
     # Part 4
