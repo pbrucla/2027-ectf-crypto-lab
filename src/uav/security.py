@@ -49,7 +49,8 @@ class Security:
         # 3. Load the public key using load_public_key()
         # 4. Use public_key.verify() to verify the signature against the unsigned bytes
         # 5. Catch InvalidSignature and return False
-        providedSignature = message.pop("signature")
+        providedSignature = message.get("signature")
+        
         try:
             load_public_key().verify(bytes.fromhex(providedSignature), unsigned_bytes(message))
             return True
@@ -64,6 +65,11 @@ class Security:
         # 2. Reject it unless it is strictly newer than self.highest_version
         # 3. Otherwise, update self.highest_version and return True
 
+        version = message["firmware"]["version"]
+        if (version <= self.highest_version):
+            return False
+        
+        self.highest_version = version
         return True
 
     # Part 4
@@ -76,7 +82,19 @@ class Security:
         # 4. Return the decrypted code as a string with decode()
         # 5. Catch InvalidTag and return None
 
-        return message["firmware"]["code"]
+        nonce = bytes.fromhex(message["firmware"]["nonce"])
+        code = bytes.fromhex(message["firmware"]["code"])
+        version = message["firmware"]["version"]
+
+        if (key == None):
+            key = load_firmware_key()
+
+        try:
+            decryptedCode = ChaCha20Poly1305(key).decrypt(nonce, code, str(version.encode()))
+            return decryptedCode.decode()
+        except (InvalidTag):
+            return None
+
 
     # Part 5
     def derive_firmware_key(self, password, salt, iterations):
