@@ -52,7 +52,11 @@ class Security:
         # 4. Use public_key.verify() to verify the signature against the unsigned bytes
         # 5. Catch InvalidSignature and return False
 
-        return True
+        try:
+            load_public_key().verify(bytes.fromhex(message.get("signature")), unsigned_bytes(message))
+            return True
+        except InvalidSignature:
+            return False
     
     # Part 3
     def verify_firmware_counter(self, message):
