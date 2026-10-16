@@ -1,6 +1,9 @@
 # 2027 eCTF Cryptography Lab
 This is a small cryptography lab to practice thinking about the 2027 eCTF scenario and how we would design a system to be robust against cryptographic attacks. In the actual eCTF competition, the UAV and ground server will most likely be separate boards. 
 
+Hello there! random change!
+
+
 When you start the scenario, the UAV runs continuously, listening for firmware updates. You will use the ground server to send legitimate updates, and the attacker to send malicious ones.
 
 ## Requirements
