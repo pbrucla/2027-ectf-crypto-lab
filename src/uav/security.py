@@ -37,8 +37,9 @@ class Security:
         # 2. Extract unsigned bytes from message using unsigned_bytes()
         # 3. Use hashlib.sha256() and hexdigest() to hash the unsigned bytes
         # 4. Use hmac.compare_digest() to compare 
-
-        return True
+        providedHash = message.pop("signature")
+        expectedHash = hashlib.sha256(encode_message(message)).hexdigest()
+        return hmac.compare_digest(expectedHash, providedHash)
 
     # Part 2
     def verify_firmware_signature(self, message):
@@ -48,9 +49,13 @@ class Security:
         # 3. Load the public key using load_public_key()
         # 4. Use public_key.verify() to verify the signature against the unsigned bytes
         # 5. Catch InvalidSignature and return False
+        providedSignature = message.pop("signature")
+        try:
+            load_public_key().verify(bytes.fromhex(providedSignature), unsigned_bytes(message))
+            return True
+        except (InvalidSignature):
+            return False
 
-        return True
-    
     # Part 3
     def verify_firmware_counter(self, message):
         # TODO: Implement anti-rollback check
