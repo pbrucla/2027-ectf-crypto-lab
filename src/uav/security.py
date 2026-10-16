@@ -69,7 +69,13 @@ class Security:
         # 1. Extract the version from message["firmware"]
         # 2. Reject it unless it is strictly newer than self.highest_version
         # 3. Otherwise, update self.highest_version and return True
-        return True
+        version = message["firmware"].get("version")
+
+        if version > self.highest_version:
+            self.highest_version = version
+            return True
+        else:
+            return False
 
     # Part 4
     def decrypt_firmware(self, message, key=None):
