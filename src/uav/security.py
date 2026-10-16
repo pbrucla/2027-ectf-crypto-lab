@@ -43,7 +43,7 @@ class Security:
         
         signature = message.get('signature')
         msg_unsigned_bytes = unsigned_bytes(message)
-        hash = hexdigest(hashlib.sha256(msg_unsigned_bytes))
+        hash = hashlib.sha256(msg_unsigned_bytes).hexdigest()
         
         return hmac.compare_digest(hash, signature)
 
