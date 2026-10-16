@@ -34,22 +34,34 @@ class Security:
     def verify_firmware_hash(self, message):
         # TODO: Implement SHA256 hash verification
         # 1. Extract signature from message using get()
+        signature = message.get("signature")
+        if signature is None:
+            return False
         # 2. Extract unsigned bytes from message using unsigned_bytes()
+        Unsigned_Bytes = unsigned_bytes(message)
         # 3. Use hashlib.sha256() and hexdigest() to hash the unsigned bytes
+        computed_hash = hashlib.sha256(Unsigned_Bytes).hexdigest()
         # 4. Use hmac.compare_digest() to compare 
-
-        return True
+        return hmac.compare_digest(computed_hash, signature)
 
     # Part 2
     def verify_firmware_signature(self, message):
         # TODO: Implement Ed25519 signature verification
         # 1. Extract signature from message using get() and convert it from hex to bytes
+        SIGNATURE = message.get("signature")
+        convertedSig = bytes.fromhex(SIGNATURE)
         # 2. Extract unsigned bytes from message using unsigned_bytes()
+        Unsigned_Bytes = unsigned_bytes(message)
         # 3. Load the public key using load_public_key()
+        PublicKey = load_public_key()
         # 4. Use public_key.verify() to verify the signature against the unsigned bytes
         # 5. Catch InvalidSignature and return False
-
+        try: 
+            PublicKey.verify(convertedSig, Unsigned_Bytes)
+        except InvalidSignature:
+            return False
         return True
+
     
     # Part 3
     def verify_firmware_counter(self, message):
