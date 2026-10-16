@@ -32,12 +32,15 @@ class Security:
 
     # Part 1
     def verify_firmware_hash(self, message):
+	# message format:
+	# {'type': 'UPDATE', 'firmware': {'version': 2, 'code': 'LEGITIMATE FLIGHT SOFTWARE'}, 'signature': 'not a hash'}
+
         # TODO: Implement SHA256 hash verification
         # 1. Extract signature from message using get()
         # 2. Extract unsigned bytes from message using unsigned_bytes()
         # 3. Use hashlib.sha256() and hexdigest() to hash the unsigned bytes
         # 4. Use hmac.compare_digest() to compare 
-
+        
         return True
 
     # Part 2
